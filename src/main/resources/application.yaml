@@ -1,5 +1,4 @@
-# example values
-
+# Настройки индексации
 indexing-settings:
   sites:
     - url: https://www.lenta.ru
@@ -8,3 +7,19 @@ indexing-settings:
       name: Skillbox
     - url: https://www.playback.ru
       name: PlayBack.Ru
+
+server:
+  port: 8080
+
+# Настройки для базы данных MySQL
+spring:
+  datasource:
+    username: root
+    password: 951Zz852Zz753.mysql
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+  jpa:
+    properties:
+      dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
