@@ -23,3 +23,8 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+
+# Настройки для Scraper
+scraper:
+  user-agent: "HeliontSearchBot"
+  referrer: "http://www.google.com"

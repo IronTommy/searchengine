@@ -1,39 +1,80 @@
 package searchengine.dto.indexing;
 
-import java.util.List;
-import java.util.concurrent.RecursiveTask;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 
+import java.io.IOException;
+import java.net.URL;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.RecursiveTask;
 
 public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
-    private final String url;
+    private final URL siteUrl;
+    private final Set<URL> visitedUrls;
 
-    public IndexingRecursiveTask(String url) {
-        this.url = url;
+    public IndexingRecursiveTask(URL siteUrl, Set<URL> visitedUrls) {
+        this.siteUrl = siteUrl;
+        this.visitedUrls = visitedUrls;
+    }
+
+    private void addLinksToGlobalList(Set<String> links) {
+        // Предположим, у вас есть статический общий список в вашем приложении
+        // GlobalLinkStorage.addLinks(links);
+        System.out.println("Adding links to the global list: " + links);
     }
 
     @Override
     protected IndexingTaskResult compute() {
         try {
-            // Используем JSOUP для получения содержимого страницы
-            Document document = Jsoup.connect(url).get();
+            // Выполняем запрос к странице
+            Connection.Response response = Jsoup.connect(siteUrl.toString()).execute();
 
-            // Используем JSOUP для извлечения ссылок из HTML-тегов <a>
-            Elements links = document.select("a[href]");
+            // Получаем код ответа
+            int statusCode = response.statusCode();
 
-            // Ваши дополнительные действия по обработке ссылок
+            // Если код ответа успешный (например, 200), продолжаем обход страницы
+            if (statusCode == 200) {
+                Document document = response.parse();
 
-            // Извлекаем URL страниц
-            List<String> pageUrls = links.eachAttr("abs:href");
+                // Извлекаем ссылки с страницы
+                Elements links = document.select("a[href]");
 
-            // Возвращаем результат выполнения задачи
-            return new IndexingTaskResult(pageUrls);
-        } catch (Exception e) {
+                // Преобразуем Elements в List<String>
+                List<String> linksList = links.eachAttr("abs:href");
+
+                // Создаем новый список из списка ссылок
+                Set<String> linksSet = new HashSet<>(linksList);
+
+                // Преобразуем текущую страницу в URL
+                URL currentUrl = new URL(siteUrl.toString());
+
+                // Добавляем текущую страницу в посещенные
+                visitedUrls.add(currentUrl);
+
+                // Исключаем уже посещенные ссылки
+                linksSet.removeAll(visitedUrls);
+
+                // Добавляем найденные ссылки в общий список
+                addLinksToGlobalList(linksSet);
+
+                // Ваши дополнительные действия по обработке ссылок
+
+                // Возвращаем результат выполнения задачи
+                return new IndexingTaskResult(linksSet);
+
+            } else {
+                // Обработка случая, когда запрос не был успешным
+                System.out.println("Failed to fetch page. Status code: " + statusCode);
+                return new IndexingTaskResult();
+            }
+        } catch (IOException e) {
             // Обработка ошибок, если не удалось получить страницу
             e.printStackTrace();
-            return new IndexingTaskResult(List.of());
+            return new IndexingTaskResult();
         }
     }
 }
