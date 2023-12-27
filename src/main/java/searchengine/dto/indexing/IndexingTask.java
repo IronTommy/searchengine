@@ -16,7 +16,6 @@ public class IndexingTask extends RecursiveTask<List<String>> {
 
     @Override
     protected List<String> compute() {
-        // Ваш код для обхода страниц и извлечения ссылок
         try {
             Document document = Jsoup.connect(url).get();
             Elements links = document.select("a[href]");
@@ -26,9 +25,7 @@ public class IndexingTask extends RecursiveTask<List<String>> {
             // Возвращаем список URL страниц
             return links.eachAttr("abs:href");
         } catch (Exception e) {
-            // Обработка ошибок, если не удалось получить страницу
-            e.printStackTrace();
-            return List.of();
+            throw new RuntimeException("Error while processing IndexingTask", e);
         }
     }
 }

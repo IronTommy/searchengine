@@ -5,8 +5,10 @@ indexing-settings:
       name: Лента.ру
     - url: https://www.skillbox.ru
       name: Skillbox
-    - url: https://www.playback.ru
+    - url: https://www.playback.ru/
       name: PlayBack.Ru
+    - url: https://volochek.life/
+      name: VolochekLife
 
 server:
   port: 8080
@@ -23,8 +25,26 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+  profiles:
+    active: dev
 
 # Настройки для Scraper
 scraper:
   user-agent: "HeliontSearchBot"
   referrer: "http://www.google.com"
+
+# Настройки логирования
+logging:
+  level:
+    org.springframework.web: DEBUG
+    org.springframework.web.client.RestTemplate: DEBUG
+    org.springframework.web.reactive: DEBUG
+    org.springframework.web.client: DEBUG
+    root: INFO
+    org.springframework: INFO
+    org.hibernate.SQL: debug
+    searchengine: DEBUG
+    searchengine.services.IndexingServiceImpl: DEBUG
+  file: logs/spring.log
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"

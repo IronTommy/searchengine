@@ -1,9 +1,13 @@
 package searchengine.dto.indexing;
 
 import org.jsoup.Connection;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import searchengine.services.SiteCrawlingTask;
 
 import java.io.IOException;
 import java.net.URL;
@@ -13,6 +17,9 @@ import java.util.Set;
 import java.util.concurrent.RecursiveTask;
 
 public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
+
+    private static final Logger logger = LoggerFactory.getLogger(IndexingRecursiveTask.class);
+
     private final URL siteUrl;
     private final Set<URL> visitedUrls;
 
@@ -71,10 +78,16 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
                 System.out.println("Failed to fetch page. Status code: " + statusCode);
                 return new IndexingTaskResult();
             }
+        } catch (HttpStatusException e) {
+            // Обработка ошибок, связанных с HTTP-статусами
+            int statusCode = e.getStatusCode();
+            logger.error("HTTP status error while fetching page {}: {}", siteUrl, statusCode, e);
+            return new IndexingTaskResult();
         } catch (IOException e) {
-            // Обработка ошибок, если не удалось получить страницу
-            e.printStackTrace();
+            // Обработка других ошибок при запросе страницы
+            logger.error("Error while fetching page: {}", siteUrl, e);
             return new IndexingTaskResult();
         }
+
     }
 }

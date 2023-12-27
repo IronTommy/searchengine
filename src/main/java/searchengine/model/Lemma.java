@@ -3,21 +3,44 @@ package searchengine.model;
 import javax.persistence.*;
 
 @Entity
-@Table(name = "lemma")
 public class Lemma {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "site_id", nullable = false)
+    @JoinColumn(name = "site_id")
     private Site site;
 
-    @Column(name = "lemma", nullable = false, length = 255)
     private String lemma;
 
-    @Column(name = "frequency", nullable = false)
     private int frequency;
 
-    // getters and setters
+    // Геттеры и сеттеры
+    // ...
+
+    public Site getSite() {
+        return site;
+    }
+
+    public void setSite(Site site) {
+        this.site = site;
+    }
+
+    public String getLemma() {
+        return lemma;
+    }
+
+    public void setLemma(String lemma) {
+        this.lemma = lemma;
+    }
+
+    public int getFrequency() {
+        return frequency;
+    }
+
+    public void setFrequency(int frequency) {
+        this.frequency = frequency;
+    }
 }

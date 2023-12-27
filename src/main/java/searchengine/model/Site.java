@@ -2,6 +2,8 @@ package searchengine.model;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "site")
@@ -26,8 +28,14 @@ public class Site {
     @Column(name = "name", nullable = false, length = 255)
     private String name;
 
+    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Page> pages = new ArrayList<>();
+
+    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Lemma> lemmas = new ArrayList<>();
+
     public Long getId() {
-        return id;
+        return this.id;
     }
 
     public void setId(Long id) {

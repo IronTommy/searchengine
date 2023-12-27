@@ -3,27 +3,31 @@ package searchengine.model;
 import javax.persistence.*;
 
 @Entity
-@Table(name = "page")
 public class Page {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "site_id", nullable = false)
+    @JoinColumn(name = "site_id")
     private Site site;
 
-    @Column(name = "path", nullable = false, columnDefinition = "TEXT")
     private String path;
 
-    @Column(name = "code", nullable = false)
-    private int code;
+    // Геттеры и сеттеры
+    // ...
 
-    @Column(name = "content", nullable = false, columnDefinition = "MEDIUMTEXT")
-    private String content;
+    public Site getSite() {
+        return site;
+    }
 
     public void setSite(Site site) {
         this.site = site;
+    }
+
+    public String getPath() {
+        return path;
     }
 
     public void setPath(String path) {
