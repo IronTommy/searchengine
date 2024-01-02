@@ -6,5 +6,5 @@ import searchengine.model.Site;
 
 @Repository
 public interface SiteRepository extends JpaRepository<Site, Long> {
-
+    Site findByUrlIgnoreCase(String url);
 }

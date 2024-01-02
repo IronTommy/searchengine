@@ -24,7 +24,6 @@ public class SiteCrawlingTask implements Runnable {
         } catch (Exception e) {
             // Логирование ошибки
             logger.error("Error during site crawling task for site: {}", site.getUrl(), e);
-            // Можно выбросить исключение или выполнить другие действия в зависимости от логики приложения
         }
     }
 }

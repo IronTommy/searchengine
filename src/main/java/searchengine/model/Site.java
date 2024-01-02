@@ -1,5 +1,7 @@
 package searchengine.model;
 
+import com.sun.istack.NotNull;
+
 import javax.persistence.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -8,6 +10,13 @@ import java.util.List;
 @Entity
 @Table(name = "site")
 public class Site {
+
+    public void initializeName(String defaultName) {
+        if (this.name == null || this.name.isEmpty()) {
+            this.name = defaultName;
+        }
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -69,4 +78,17 @@ public class Site {
     public void setLastError(String lastError) {
         this.lastError = lastError;
     }
+
+    @Override
+    public String toString() {
+        return "Site{" +
+                "id=" + id +
+                ", status=" + status +
+                ", statusTime=" + statusTime +
+                ", lastError='" + lastError + '\'' +
+                ", url='" + url + '\'' +
+                ", name='" + name + '\'' +
+                '}';
+    }
+
 }

@@ -20,7 +20,6 @@ public class IndexingTask extends RecursiveTask<List<String>> {
             Document document = Jsoup.connect(url).get();
             Elements links = document.select("a[href]");
 
-            // Ваши дополнительные действия по обработке ссылок
 
             // Возвращаем список URL страниц
             return links.eachAttr("abs:href");

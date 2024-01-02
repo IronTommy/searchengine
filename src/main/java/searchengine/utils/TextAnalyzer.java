@@ -5,16 +5,32 @@ import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import searchengine.LemmatizationExample;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class TextAnalyzer {
+
+    public static final int MAX_FREQUENCY = 100; // Замените на ваше значение
 
     private final LuceneMorphology luceneMorph;
 
     public TextAnalyzer() throws IOException {
         this.luceneMorph = new RussianLuceneMorphology();
+    }
+
+    public static List<String> extractLemmas(String text) {
+        return Arrays.stream(text.split("\\s+"))
+                .map(String::toLowerCase)
+                .collect(Collectors.toList());
+    }
+
+    public static String generateSnippet(String content, String query) {
+        // Реализуйте вашу логику создания отрывка
+        // Пример: вернуть первые 100 символов содержимого
+        return content.substring(0, Math.min(content.length(), 100));
     }
 
     public Map<String, Integer> analyzeText(String text) throws IOException {

@@ -7,7 +7,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import searchengine.services.SiteCrawlingTask;
 
 import java.io.IOException;
 import java.net.URL;
@@ -29,7 +28,7 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
     }
 
     private void addLinksToGlobalList(Set<String> links) {
-        // Предположим, у вас есть статический общий список в вашем приложении
+        // Предположим, есть статический общий список в приложении
         // GlobalLinkStorage.addLinks(links);
         System.out.println("Adding links to the global list: " + links);
     }
@@ -47,7 +46,7 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
             if (statusCode == 200) {
                 Document document = response.parse();
 
-                // Извлекаем ссылки с страницы
+                // Извлекаем ссылки со страницы
                 Elements links = document.select("a[href]");
 
                 // Преобразуем Elements в List<String>

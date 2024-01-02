@@ -20,12 +20,32 @@ public class Index {
     @Column(name = "rank_value")
     private float rankValue;
 
+    @Column(name = "title")
+    private String title;
+
+
     public void setPage(Page page) {
         this.page = page;
     }
 
     public void setRankValue(float rankValue) {
-        this.rankValue = rankValue;
+        if (rankValue >= 0.0f && rankValue <= 1.0f) {
+            this.rankValue = rankValue;
+        } else {
+            throw new IllegalArgumentException("Rank value should be between 0.0 and 1.0");
+        }
+    }
+
+
+    public void setRank(int rank) {
+    }
+
+    public Page getPage() {
+        return page;
+    }
+
+    public String getTitle() {
+        return title;
     }
 
     public void setLemma(Lemma lemma) {

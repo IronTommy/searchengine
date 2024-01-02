@@ -1,14 +1,14 @@
 # Настройки индексации
 indexing-settings:
   sites:
-    - url: https://www.lenta.ru
-      name: Лента.ру
-    - url: https://www.skillbox.ru
-      name: Skillbox
-    - url: https://www.playback.ru/
-      name: PlayBack.Ru
-    - url: https://volochek.life/
-      name: VolochekLife
+    - name: "lenta.ru"
+      url: "https://www.lenta.ru"
+    - name: "Skillbox"
+      url: "https://www.skillbox.ru"
+    - name: "PlayBack.Ru"
+      url: "https://www.playback.ru/"
+    - name: "VolochekLife"
+      url: "https://volochek.life/"
 
 server:
   port: 8080
@@ -20,6 +20,7 @@ spring:
     password: 951Zz852Zz753.mysql
     url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
   jpa:
+    open-in-view: false
     properties:
       dialect: org.hibernate.dialect.MySQL8Dialect
     hibernate:
