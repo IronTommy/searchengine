@@ -45,6 +45,7 @@ public class SearchController {
         try {
             // Разбиваем поисковый запрос на леммы
             List<String> queryLemmas = TextAnalyzer.extractLemmas(query);
+            System.out.println("Extracted Lemmas: " + queryLemmas);
 
             // Исключаем леммы, которые встречаются на слишком большом количестве страниц
             List<String> filteredLemmas = filterFrequentLemmas(queryLemmas);

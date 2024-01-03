@@ -11,7 +11,9 @@ import searchengine.repositories.PageRepository;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -32,65 +34,55 @@ public class HtmlProcessingService {
 
     @Transactional
     public void processHtml(String url, String htmlContent) {
-        // Получаем или создаем страницу
-        Page page = pageRepository.findByUrl(url).orElseGet(() -> {
-            Page newPage = new Page();
-            newPage.setUrl(url);
-            return pageRepository.save(newPage);
-        });
+        try {
+            Page page = saveOrUpdatePage(url);
 
-        // Извлекаем леммы из HTML-кода с использованием LemmatizationExample
-        List<String> lemmas = extractLemmasWithLucene(htmlContent);
+            List<String> lemmas = extractLemmasWithLucene(htmlContent);
 
-        // Обновляем таблицу lemma
-        updateLemmaTable(lemmas);
+            updateLemmaTable(lemmas);
 
-        // Обновляем таблицу index
-        updateIndexTable(page, lemmas);
+            updateIndexTable(page, lemmas);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
-    private List<String> extractLemmasWithLucene(String htmlContent) {
-        // Реализуйте ваш код для извлечения лемм из HTML-кода с использованием LemmatizationExample
+    private Page saveOrUpdatePage(String url) {
+        return pageRepository.findByUrl(url).orElseGet(() ->
+                pageRepository.save(new Page(url)));
+    }
+
+
+    private List<String> extractLemmasWithLucene(String htmlContent) throws IOException {
         String[] words = htmlContent.split("\\s+");
         return Arrays.stream(words)
                 .flatMap(word -> {
                     try {
                         return lemmatizer.getNormalForms(word).stream();
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        throw new RuntimeException("Error extracting lemmas", e);
                     }
-                    return Stream.empty();
                 })
                 .collect(Collectors.toList());
     }
 
     private void updateLemmaTable(List<String> lemmas) {
+        Map<String, Lemma> lemmaMap = new HashMap<>();
+
         for (String lemmaText : lemmas) {
-            Lemma lemma = lemmaRepository.findByLemma(lemmaText).orElseGet(() -> {
-                Lemma newLemma = new Lemma();
-                newLemma.setLemma(lemmaText);
-                newLemma.setFrequency(0);
-                return newLemma;
-            });
-
-            // Увеличиваем частоту леммы
-            lemma.setFrequency(lemma.getFrequency() + 1);
-
-            // Сохраняем или обновляем лемму в таблице
-            lemmaRepository.save(lemma);
+            lemmaMap.computeIfAbsent(lemmaText, Lemma::new)
+                    .incrementFrequency();
         }
+
+        lemmaRepository.saveAll(lemmaMap.values());
     }
 
     private void updateIndexTable(Page page, List<String> lemmas) {
-        for (String lemmaText : lemmas) {
-            Lemma lemma = lemmaRepository.findByLemma(lemmaText).orElseThrow();
+        List<Index> indices = lemmas.stream()
+                .map(lemmaText -> new Index(page, lemmaRepository.findByLemma(lemmaText).orElseThrow()))
+                .collect(Collectors.toList());
 
-            Index index = new Index();
-            index.setPage(page);
-            index.setLemma(lemma);
-            index.setRank(1);
-
-            indexRepository.save(index);
-        }
+        indexRepository.saveAll(indices);
     }
 }
+

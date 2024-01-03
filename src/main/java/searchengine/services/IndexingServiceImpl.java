@@ -272,7 +272,7 @@ public class IndexingServiceImpl implements IndexingService {
 
             }
 
-            boolean indexingResult = yourIndexingLogic(pageUrl);
+            boolean indexingResult = myIndexingLogic(pageUrl);
 
             // Обновим статус и время в зависимости от результата индексации
             site.setStatus(indexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
@@ -378,12 +378,18 @@ public class IndexingServiceImpl implements IndexingService {
     public <T> List<Page> findMatchingPages(List<T> lemmas, String site, int offset, int limit) {
         List<Index> indices;
 
+        // Преобразование списка лемм в список сущностей Lemma
+        List<Lemma> lemmaEntities = lemmas.stream()
+                .map(lemma -> lemmaRepository.findByLemma((String) lemma).orElse(null))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
         if (StringUtils.isEmpty(site)) {
             // Если сайт не указан, ищем по всем сайтам
-            indices = indexRepository.findByLemmaIn((List<Lemma>) lemmas);
+            indices = indexRepository.findByLemmaIn(lemmaEntities);
         } else {
             // Если указан конкретный сайт, ищем по нему
-            indices = indexRepository.findByLemmaInAndPageSiteUrl((List<Lemma>) lemmas, site);
+            indices = indexRepository.findByLemmaInAndPageSiteUrl(lemmaEntities, site);
         }
 
         List<Page> pages = indices.stream()
@@ -395,27 +401,65 @@ public class IndexingServiceImpl implements IndexingService {
         return pages;
     }
 
+
     @Override
     public List<Index> findByLemmaInAndPageSiteUrl(List<Lemma> lemmas, String siteUrl) {
         return indexRepository.findByLemmaInAndPageSiteUrl(lemmas, siteUrl);
     }
 
     private int getLemmaFrequency(String lemma) {
-        return 0;
+        Optional<Lemma> optionalLemma = lemmaRepository.findByLemma(lemma);
+
+        return optionalLemma.map(Lemma::getFrequency).orElse(0);
+    }
+
+    private String getTitleFromPage(Page page) {
+        return page.getTitle();
+    }
+
+    private String getContentFromPage(Page page) {
+        return page.getContent();
     }
 
     private List<SearchResult> calculateRelevanceAndSort(List<Page> pages, String query) {
-        return Collections.emptyList();
+        List<SearchResult> searchResults = new ArrayList<>();
+
+        for (Page page : pages) {
+            String title = "";
+            String content = "";
+
+            float relevance = calculateRelevance(query, title, content);
+
+            SearchResult searchResult = new SearchResult();
+            searchResult.setPage(page);
+            searchResult.setRelevance(relevance);
+
+            searchResults.add(searchResult);
+        }
+
+        // Сортировка по убыванию релевантности
+        searchResults.sort(Comparator.comparing(SearchResult::getRelevance).reversed());
+
+        return searchResults;
     }
+
 
     private float calculateRelevance(String query, String title, String content) {
-        return 0.75f;
+        // Простой пример: релевантность = (количество вхождений запроса в заголовок + содержимое) / длина запроса
+        int titleMatches = StringUtils.countOccurrencesOf(title.toLowerCase(), query.toLowerCase());
+        int contentMatches = StringUtils.countOccurrencesOf(content.toLowerCase(), query.toLowerCase());
+        int queryLength = query.length();
+
+        // Простейшая формула для релевантности
+        float relevance = (titleMatches + contentMatches) / (float) queryLength;
+
+        return relevance;
     }
 
-
-    private boolean yourIndexingLogic(URL pageUrl) {
+    private boolean myIndexingLogic(URL pageUrl) {
         try {
-            IndexingTaskResult result = new IndexingTaskResult();
+            // Здесь должна быть логика индексации и получения результата
+            IndexingTaskResult result = performIndexingLogic(pageUrl);
 
             if (result != null && !result.getPageUrls().isEmpty()) {
                 Site site = siteRepository.findByUrlIgnoreCase(pageUrl.toString());
@@ -426,6 +470,7 @@ public class IndexingServiceImpl implements IndexingService {
 
                     Site savedSite = siteRepository.save(site);
                     logger.info("Site saved: {}", savedSite);
+
                     if (savedSite != null && savedSite.getId() != null) {
                         logger.info("New site saved to the database with URL: {}", savedSite.getUrl());
                     } else {
@@ -441,10 +486,18 @@ public class IndexingServiceImpl implements IndexingService {
                 return false;
             }
         } catch (Exception e) {
-            logger.error("Error in yourIndexingLogic for page URL: " + pageUrl, e);
+            logger.error("Error in myIndexingLogic for page URL: " + pageUrl, e);
             return false;
         }
     }
+
+    private IndexingTaskResult performIndexingLogic(URL inputPageUrl) {
+        IndexingTaskResult result = new IndexingTaskResult();
+        String pageUrl = "https://skillbox.ru";
+        result.getPageUrls().add(pageUrl);
+        return result;
+    }
+
 
     @Override
     @Transactional

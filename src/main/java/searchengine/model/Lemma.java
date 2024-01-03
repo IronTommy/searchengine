@@ -25,6 +25,20 @@ public class Lemma {
         this.id = id;
     }
 
+    // Конструктор без аргументов (для JPA)
+    public Lemma() {
+    }
+
+    // Конструктор с аргументом 'lemma'
+    public Lemma(String lemma) {
+        this.lemma = lemma;
+    }
+
+    // Метод для увеличения частоты
+    public void incrementFrequency() {
+        this.frequency++;
+    }
+
     public Site getSite() {
         return site;
     }

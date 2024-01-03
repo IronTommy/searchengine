@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 
 public class TextAnalyzer {
 
-    public static final int MAX_FREQUENCY = 100; // Замените на ваше значение
+    public static final int MAX_FREQUENCY = 100;
 
     private final LuceneMorphology luceneMorph;
 
@@ -27,46 +27,54 @@ public class TextAnalyzer {
                 .collect(Collectors.toList());
     }
 
-    public static String generateSnippet(String content, String query) {
-        // Реализуйте вашу логику создания отрывка
-        // Пример: вернуть первые 100 символов содержимого
-        return content.substring(0, Math.min(content.length(), 100));
+    public String generateSnippet(String content, int maxLength) {
+        return content.substring(0, Math.min(content.length(), maxLength));
     }
 
-    public Map<String, Integer> analyzeText(String text) throws IOException {
+    public Map<String, Integer> analyzeText(String text) {
         Map<String, Integer> lemmaCountMap = new HashMap<>();
 
         String[] words = text.split("\\s+");
 
         for (String word : words) {
-            // Проверка, что слово не пустое
-            if (!word.isEmpty()) {
-                // Удаление знаков препинания
-                String cleanedWord = word.replaceAll("[^\\p{L}]+", "");
-                // Проверка, что первый символ слова является кириллической буквой
-                char firstChar = cleanedWord.charAt(0);
-                if (Character.UnicodeBlock.CYRILLIC.equals(Character.UnicodeBlock.of(firstChar))) {
-                    // Приведение слова к нижнему регистру и применение лемматизации
-                    String lowercaseWord = cleanedWord.toLowerCase();
-                    LemmatizationExample lemmatizer = new LemmatizationExample();
-                    try {
-                        List<String> wordBaseForms = lemmatizer.getNormalForms(lowercaseWord);
-                        for (String lemma : wordBaseForms) {
-                            lemmaCountMap.put(lemma, lemmaCountMap.getOrDefault(lemma, 0) + 1);
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
+            processWord(word, lemmaCountMap);
         }
 
         return lemmaCountMap;
     }
 
+    private void processWord(String word, Map<String, Integer> lemmaCountMap) {
+        if (!word.isEmpty()) {
+            String cleanedWord = word.replaceAll("[^\\p{L}]+", "");
+            char firstChar = cleanedWord.charAt(0);
+
+            if (Character.UnicodeBlock.CYRILLIC.equals(Character.UnicodeBlock.of(firstChar))) {
+                String lowercaseWord = cleanedWord.toLowerCase();
+                processLemma(lowercaseWord, lemmaCountMap);
+            }
+        }
+    }
+
+    private void processLemma(String lemma, Map<String, Integer> lemmaCountMap) {
+        LemmatizationExample lemmatizer = null;
+        try {
+            lemmatizer = new LemmatizationExample();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            List<String> wordBaseForms = lemmatizer.getNormalForms(lemma);
+            wordBaseForms.forEach(baseForm ->
+                    lemmaCountMap.put(baseForm, lemmaCountMap.getOrDefault(baseForm, 0) + 1)
+            );
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     public String removeHtmlTags(String htmlText) {
-        // Используйте регулярное выражение для удаления HTML-тегов
         return htmlText.replaceAll("<[^>]+>", "");
     }
 
@@ -74,18 +82,14 @@ public class TextAnalyzer {
         try {
             TextAnalyzer textAnalyzer = new TextAnalyzer();
 
-            // Пример текста для анализа
             String inputText = "Повторное появление леопарда в Осетии <b>позволяет</b> предположить, " +
                     "что леопард постоянно обитает в некоторых районах Северного Кавказа.";
 
-            // Получение результата анализа
             Map<String, Integer> result = textAnalyzer.analyzeText(inputText);
 
-            // Вывод результатов
             System.out.println("Результаты анализа текста:");
             result.forEach((lemma, count) -> System.out.println(lemma + " — " + count));
 
-            // Пример удаления HTML-тегов
             String htmlText = "<p>Это <b>текст</b> с HTML-тегами.</p>";
             String plainText = textAnalyzer.removeHtmlTags(htmlText);
             System.out.println("Текст без HTML-тегов: " + plainText);

@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
-@AllArgsConstructor
 public class SearchResult {
     private String site;
     private String siteName;
@@ -12,4 +11,17 @@ public class SearchResult {
     private String title;
     private String snippet;
     private float relevance;
+    private Page page;
+
+    public SearchResult() {
+
+    }
+
+    public void setPage(Page page) {
+        this.page = page;
+    }
+
+    public Page getPage() {
+        return page;
+    }
 }

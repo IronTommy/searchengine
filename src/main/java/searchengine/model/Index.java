@@ -23,6 +23,10 @@ public class Index {
     @Column(name = "title")
     private String title;
 
+    public Index() {
+
+    }
+
 
     public void setPage(Page page) {
         this.page = page;
@@ -36,6 +40,10 @@ public class Index {
         }
     }
 
+    public Index(Page page, Lemma lemma) {
+        this.page = page;
+        this.lemma = lemma;
+    }
 
     public void setRank(int rank) {
     }

@@ -24,6 +24,10 @@ public class Page {
 
     private String path;
 
+    public Page() {
+
+    }
+
     public Long getId() {
         return id;
     }
@@ -39,7 +43,9 @@ public class Page {
         return сontent;
     }
 
-
+    public Page(String url) {
+        this.url = url;
+    }
 
     public Site getSite() {
         return site;
