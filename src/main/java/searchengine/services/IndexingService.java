@@ -1,12 +1,10 @@
 package searchengine.services;
 
-import searchengine.model.Index;
-import searchengine.model.Lemma;
-import searchengine.model.Page;
-import searchengine.model.SearchResult;
+import searchengine.model.*;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 
 public interface IndexingService {
     boolean isIndexingInProgress();
@@ -17,4 +15,5 @@ public interface IndexingService {
     List<SearchResult> search(String query, String site, int offset, int limit);
     <T> List<Page> findMatchingPages(List<T> lemmas, String site, int offset, int limit);
     List<Index> findByLemmaInAndPageSiteUrl(List<Lemma> lemmas, String siteUrl);
+    List<Map<String, String>> loadSiteConfigs();
 }

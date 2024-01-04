@@ -1,10 +1,13 @@
 package searchengine.services;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.LemmatizationExample;
-import searchengine.model.*;
+import searchengine.model.Index;
+import searchengine.model.Lemma;
+import searchengine.model.Page;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
@@ -15,22 +18,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
+@RequiredArgsConstructor
 public class HtmlProcessingService {
 
-    @Autowired
-    private PageRepository pageRepository;
-
-    @Autowired
-    private LemmaRepository lemmaRepository;
-
-    @Autowired
-    private IndexRepository indexRepository;
-
-    @Autowired
-    private LemmatizationExample lemmatizer;
+    private final PageRepository pageRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexRepository indexRepository;
+    private final LemmatizationExample lemmatizer;
 
     @Transactional
     public void processHtml(String url, String htmlContent) {
@@ -54,8 +50,13 @@ public class HtmlProcessingService {
 
 
     private List<String> extractLemmasWithLucene(String htmlContent) throws IOException {
-        String[] words = htmlContent.split("\\s+");
-        return Arrays.stream(words)
+        // Используем Jsoup для парсинга HTML-контента и извлечения текста
+        String plainText = Jsoup.parse(htmlContent).text();
+
+        // Теперь разбиваем текст на слова
+        String[] words = plainText.split("\\s+");
+
+        return List.of(words).stream()
                 .flatMap(word -> {
                     try {
                         return lemmatizer.getNormalForms(word).stream();
@@ -65,6 +66,7 @@ public class HtmlProcessingService {
                 })
                 .collect(Collectors.toList());
     }
+
 
     private void updateLemmaTable(List<String> lemmas) {
         Map<String, Lemma> lemmaMap = new HashMap<>();

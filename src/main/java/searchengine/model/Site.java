@@ -79,6 +79,15 @@ public class Site {
         this.lastError = lastError;
     }
 
+    public String getLastError() {
+        return lastError;
+    }
+
+    public LocalDateTime getStatusTime() {
+        return statusTime;
+    }
+
+
     @Override
     public String toString() {
         return "Site{" +
@@ -91,4 +100,8 @@ public class Site {
                 '}';
     }
 
+
+    public SiteStatus getStatus() {
+        return status;
+    }
 }

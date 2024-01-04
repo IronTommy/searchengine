@@ -1,8 +1,8 @@
 package searchengine.services;
 
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +33,7 @@ import org.springframework.util.StringUtils;
 import static searchengine.model.SiteStatus.INDEXING;
 
 @Service
+@RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
 
     private static final Logger logger = LoggerFactory.getLogger(IndexingServiceImpl.class);
@@ -48,17 +49,6 @@ public class IndexingServiceImpl implements IndexingService {
     private final Set<URL> visitedUrls = new HashSet<>();
     private volatile boolean stopIndexing = false;
 
-    @Autowired
-    public IndexingServiceImpl(Environment environment, SiteRepository siteRepository,
-                               PageRepository pageRepository, LemmaRepository lemmaRepository,
-                               IndexRepository indexRepository) {
-        this.environment = environment;
-        this.siteRepository = siteRepository;
-        this.pageRepository = pageRepository;
-        this.lemmaRepository = lemmaRepository;
-        this.indexRepository = indexRepository;
-    }
-
     @Override
     @Transactional
     public void stopIndexing() {
@@ -71,64 +61,17 @@ public class IndexingServiceImpl implements IndexingService {
         logger.info("startIndexing method is called");
 
         try {
-            List<Map<String, String>> siteConfigs = Optional
-                    .ofNullable(environment.getProperty("indexing-settings.sites", List.class))
-                    .orElse(Collections.emptyList());
+            List<Map<String, String>> siteConfigs = loadSiteConfigs();
 
-            List<Site> sites = siteConfigs.stream()
-                    .map(siteConfig -> {
-                        Site site = new Site();
-                        site.setStatus(INDEXING);
-                        site.setStatusTime(LocalDateTime.now());
-                        site.setName(siteConfig.get("name"));
-                        site.setUrl(siteConfig.get("url"));
-                        site.initializeName("NAME");
-                        siteRepository.save(site);
-                        logger.info("Site saved: {}", site);
-                        return site;
-                    })
-                    .collect(Collectors.toList());
-
-            logger.info("Found {} sites for indexing", sites.size());
-            logger.debug("Sites to be indexed: {}", sites);
+            List<Site> sites = saveSites(siteConfigs);
 
             ForkJoinPool forkJoinPool = new ForkJoinPool();
-
-            List<CompletableFuture<IndexingTaskResult>> futures = sites.stream()
-                    .map(site -> CompletableFuture.supplyAsync(() -> {
-                        try {
-                            if (stopIndexing) {
-                                throw new IndexingStoppedException("Индексация остановлена пользователем");
-                            }
-                            return forkJoinPool.invoke(new IndexingRecursiveTask(new URL(site.getUrl()), visitedUrls));
-                        } catch (MalformedURLException e) {
-                            logger.error("Malformed URL for site: {}", site.getUrl(), e);
-                            return null;
-                        }
-                    }))
-                    .collect(Collectors.toList());
+            List<CompletableFuture<IndexingTaskResult>> futures = indexSitesAsync(sites, forkJoinPool);
 
             CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-
             allOf.join();
 
-            for (int i = 0; i < futures.size(); i++) {
-                Site site = sites.get(i);
-                CompletableFuture<IndexingTaskResult> future = futures.get(i);
-
-                try {
-                    IndexingTaskResult taskResult = future.get();
-                    logger.info("Task result for site {}: {}", site.getUrl(), taskResult);
-                    if (taskResult != null) {
-                        processIndexingResult(site, taskResult);
-                    } else {
-                        logger.error("Error processing indexing result for site: {}. Task result is null.", site.getUrl());
-                    }
-                } catch (InterruptedException | ExecutionException e) {
-                    Thread.currentThread().interrupt();
-                    logger.error("Error while getting task result for site: {}", site.getUrl(), e);
-                }
-            }
+            processIndexingResults(sites, futures);
 
             logger.debug("Indexing process completed successfully");
         } catch (IndexingStoppedException e) {
@@ -138,68 +81,157 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
+    @Override
+    public List<Map<String, String>> loadSiteConfigs() {
+        return Optional
+                .ofNullable(environment.getProperty("indexing-settings.sites", List.class))
+                .map(obj -> (List<Map<String, String>>) obj)
+                .orElse(Collections.emptyList());
+    }
+
+    private List<Site> saveSites(List<Map<String, String>> siteConfigs) {
+        return siteConfigs.stream()
+                .map(siteConfig -> {
+                    Site site = createAndSaveSite(siteConfig);
+                    logger.info("Site saved: {}", site);
+                    return site;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private Site createAndSaveSite(Map<String, String> siteConfig) {
+        Site site = new Site();
+        site.setStatus(INDEXING);
+        site.setStatusTime(LocalDateTime.now());
+        site.setName(siteConfig.get("name"));
+        site.setUrl(siteConfig.get("url"));
+        site.initializeName("NAME");
+        siteRepository.save(site);
+        return site;
+    }
+
+    private List<CompletableFuture<IndexingTaskResult>> indexSitesAsync(List<Site> sites, ForkJoinPool forkJoinPool) {
+        return sites.stream()
+                .map(site -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        if (stopIndexing) {
+                            throw new IndexingStoppedException("Индексация остановлена пользователем");
+                        }
+                        return forkJoinPool.invoke(new IndexingRecursiveTask(new URL(site.getUrl()), visitedUrls));
+                    } catch (MalformedURLException e) {
+                        logger.error("Malformed URL for site: {}", site.getUrl(), e);
+                        return null;
+                    }
+                }))
+                .collect(Collectors.toList());
+    }
+
+    private void processIndexingResults(List<Site> sites, List<CompletableFuture<IndexingTaskResult>> futures) {
+        for (int i = 0; i < futures.size(); i++) {
+            Site site = sites.get(i);
+            CompletableFuture<IndexingTaskResult> future = futures.get(i);
+
+            try {
+                IndexingTaskResult taskResult = future.get();
+                logger.info("Task result for site {}: {}", site.getUrl(), taskResult);
+                if (taskResult != null) {
+                    processIndexingResult(site, taskResult);
+                } else {
+                    logger.error("Error processing indexing result for site: {}. Task result is null.", site.getUrl());
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                Thread.currentThread().interrupt();
+                logger.error("Error while getting task result for site: {}", site.getUrl(), e);
+            }
+        }
+    }
+
+
     @Transactional
     public void processIndexingResult(Site site, IndexingTaskResult result) {
         logger.info("Processing indexing result for site: {}", site.getUrl());
 
         for (String pageUrl : result.getPageUrls()) {
-            try {
-                URL url = new URL(pageUrl);
-
-                // Добавим проверку на ошибочные HTTP-ответы
-                if (!isValidHttpResponse(url)) {
-                    logger.warn("Skipping indexing for {} due to error HTTP response", pageUrl);
-                    continue;
-                }
-
-                String pageContent = getPageContent(url);
-                List<String> lemmas = extractLemmas(pageContent);
-
-                for (String lemmaText : lemmas) {
-                    saveLemmaToDatabase(site, lemmaText);
-                    logger.debug("Lemma saved for site: {}, text: {}", site.getUrl(), lemmaText);
-                }
-
-                Page page = new Page();
-                page.setSite(site);
-                page.setPath(url.getPath());
-                pageRepository.save(page);
-                logger.debug("Page saved for site: {}", site.getUrl());
-
-                for (String lemmaText : lemmas) {
-                    Optional<Lemma> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaText);
-                    if (optionalLemma.isPresent()) {
-                        Lemma lemma = optionalLemma.get();
-
-                        Index index = new Index();
-                        index.setPage(page);
-                        index.setLemma(lemma);
-                        index.setRankValue(0.8f);
-                        indexRepository.save(index);
-                        logger.info("index saved: " + index);
-                        logger.debug("Index saved for site: {}, lemma: {}", site.getUrl(), lemmaText);
-                    } else {
-                        logger.error("Lemma not found for site {} and lemma {}", site.getUrl(), lemmaText);
-                    }
-                }
-
-                logger.info("Page added for site: {}", site.getUrl());
-            } catch (MalformedURLException e) {
-                logger.error("Malformed URL while processing page for site {}: {}", site.getUrl(), pageUrl, e);
-            } catch (Exception e) {
-                logger.error("Error processing page for site {}: {}", site.getUrl(), pageUrl, e);
-            }
-
+            processPage(site, pageUrl);
         }
 
+        updateSiteStatus(site);
+
+        logger.info("Processing indexing result completed for site: {}", site.getUrl());
+    }
+
+    private void processPage(Site site, String pageUrl) {
+        try {
+            URL url = new URL(pageUrl);
+
+            if (!isValidHttpResponse(url)) {
+                logger.warn("Skipping indexing for {} due to error HTTP response", pageUrl);
+                return;
+            }
+
+            String pageContent = getPageContent(url);
+            List<String> lemmas = extractLemmas(pageContent);
+
+            for (String lemmaText : lemmas) {
+                saveLemmaToDatabase(site, lemmaText);
+                logger.debug("Lemma saved for site: {}, text: {}", site.getUrl(), lemmaText);
+            }
+
+            Page page = savePageToDatabase(site, url.getPath());
+
+            indexLemmas(site, lemmas, page);
+
+            logger.info("Page added for site: {}", site.getUrl());
+        } catch (MalformedURLException e) {
+            logger.error("Malformed URL while processing page for site {}: {}", site.getUrl(), pageUrl, e);
+        } catch (Exception e) {
+            logger.error("Error processing page for site {}: {}", site.getUrl(), pageUrl, e);
+        }
+    }
+
+    private void indexLemmas(Site site, List<String> lemmas, Page page) {
+        for (String lemmaText : lemmas) {
+            Optional<Lemma> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaText);
+            if (optionalLemma.isPresent()) {
+                Lemma lemma = optionalLemma.get();
+
+                Index index = new Index();
+                index.setPage(page);
+                index.setLemma(lemma);
+                index.setRankValue(0.8f);
+                indexRepository.save(index);
+                logger.info("Index saved: " + index);
+                logger.debug("Index saved for site: {}, lemma: {}", site.getUrl(), lemmaText);
+            } else {
+                logger.error("Lemma not found for site {} and lemma {}", site.getUrl(), lemmaText);
+            }
+        }
+    }
+
+    private void saveLemmasToDatabase(Site site, List<String> lemmas) {
+        for (String lemmaText : lemmas) {
+            saveLemmaToDatabase(site, lemmaText);
+            logger.debug("Lemma saved for site: {}, text: {}", site.getUrl(), lemmaText);
+        }
+    }
+
+    private Page savePageToDatabase(Site site, String path) {
+        Page page = new Page();
+        page.setSite(site);
+        page.setPath(path);
+        pageRepository.save(page);
+        logger.debug("Page saved for site: {}", site.getUrl());
+        return page;
+    }
+
+    private void updateSiteStatus(Site site) {
         site.setStatus(SiteStatus.INDEXED);
         site.setStatusTime(LocalDateTime.now());
         site.initializeName("NAME");
         siteRepository.save(site);
         logger.debug("Site saved: {}", site);
-
-        logger.info("Processing indexing result completed for site: {}", site.getUrl());
     }
+
 
     private boolean isValidHttpResponse(URL url) {
         try {
@@ -253,47 +285,26 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             Site site = siteRepository.findByUrlIgnoreCase(pageUrl.toString());
 
-            // Если сайт не найден в базе данных, считаем его разрешенным для индексации
-            boolean isSiteAllowed = site != null || isSiteAllowed(pageUrl.toString());
-
+            boolean isSiteAllowed = isSiteAllowed(pageUrl.toString(), false);
             if (!isSiteAllowed) {
-                // Если переданная страница не принадлежит разрешенным сайтам, выдаем ошибку
-                throw new IllegalArgumentException("Индексация страницы с других сайтов запрещена");
+                // Сайт запрещен, обновим его статус в базе данных
+                site = saveSiteAndUpdateStatus(site, pageUrl, SiteStatus.FAILED);
+                return false;
             }
 
-            if (site == null) {
-                site = new Site();
-                site.setUrl(pageUrl.toString());
-                site.setStatus(INDEXING);
-                site.setStatusTime(LocalDateTime.now());
-                site.initializeName("NAME");
-                siteRepository.save(site);
-                logger.info("Site saved: " + site);
-
-            }
-
+            site = saveSiteAndUpdateStatus(site, pageUrl, SiteStatus.INDEXING);
             boolean indexingResult = myIndexingLogic(pageUrl);
 
             // Обновим статус и время в зависимости от результата индексации
-            site.setStatus(indexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
-            site.setStatusTime(LocalDateTime.now());
-            site.initializeName("NAME");
-            siteRepository.save(site);
-            logger.info("Site saved: " + site);
+            saveSiteAndUpdateStatus(site, pageUrl, indexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
 
-
-            // Асинхронно обрабатываем индексацию, чтобы не блокировать основной поток
             Site finalSite = site;
+            // Асинхронно обрабатываем индексацию, чтобы не блокировать основной поток
             CompletableFuture.runAsync(() -> {
                 try {
                     boolean asyncIndexingResult = yourAsyncIndexingLogic(pageUrl);
                     // Обновим статус и время в зависимости от результата асинхронной индексации
-                    finalSite.setStatus(asyncIndexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
-                    finalSite.setStatusTime(LocalDateTime.now());
-                    finalSite.initializeName("NAME");
-                    siteRepository.save(finalSite);
-                    logger.info("Site saved: " + finalSite);
-
+                    saveSiteAndUpdateStatus(finalSite, pageUrl, asyncIndexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
                 } catch (Exception e) {
                     logger.error("Error indexing page asynchronously: " + pageUrl, e);
                 }
@@ -309,12 +320,57 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private boolean isSiteAllowed(String url) {
-        List<String> allowedSites = Optional.ofNullable(environment.getProperty("indexing-settings.sites", List.class))
-                .orElse(Collections.emptyList());
-        return allowedSites.stream().anyMatch(siteUrl -> url.startsWith(siteUrl));
+    private Site saveSiteAndUpdateStatus(Site site, URL pageUrl, SiteStatus status) {
+        if (site == null) {
+            // Если сайта нет в базе данных, создадим новый
+            site = new Site();
+            site.setUrl(pageUrl.toString());
+        }
+
+        site.setStatus(status);
+        site.setStatusTime(LocalDateTime.now());
+
+        return siteRepository.save(site);
     }
 
+    private boolean isSiteAllowed(String url, boolean detailedCheck) {
+        logger.debug("Available sites from properties: " + environment.getProperty("indexing-settings.sites"));
+
+        List<String> allowedSites = Optional.ofNullable(environment
+                        .getProperty("indexing-settings.sites", List.class))
+                .orElse(Collections.emptyList());
+
+        // Приводим URL к нижнему регистру для сравнения без учета регистра
+        url = url.toLowerCase();
+
+        for (String allowedSite : allowedSites) {
+            String lowerCaseSite = allowedSite.toLowerCase();
+
+            boolean isAllowed = detailedCheck
+                    ? checkDetailedConditions(url, lowerCaseSite)
+                    : url.startsWith(lowerCaseSite);
+
+            logger.debug("Checking site: {}, Result: {}", lowerCaseSite, isAllowed);
+
+            if (isAllowed) {
+                logger.debug("URL: {}, Is Allowed: true", url);
+                return true;
+            }
+        }
+
+        logger.debug("URL: {}, Is Allowed: false");
+        logger.info("Denied site: {}", url);
+        return false;
+    }
+
+    private boolean checkDetailedConditions(String url, String allowedSite) {
+        // Дополнительная логика проверки символов и условий
+        // Условия сравнения символов или другие детали проверки
+
+        boolean containsAllowedString = url.contains("allowed");
+
+        return containsAllowedString;
+    }
 
     private boolean yourAsyncIndexingLogic(URL pageUrl) {
         try {
@@ -406,6 +462,7 @@ public class IndexingServiceImpl implements IndexingService {
     public List<Index> findByLemmaInAndPageSiteUrl(List<Lemma> lemmas, String siteUrl) {
         return indexRepository.findByLemmaInAndPageSiteUrl(lemmas, siteUrl);
     }
+
 
     private int getLemmaFrequency(String lemma) {
         Optional<Lemma> optionalLemma = lemmaRepository.findByLemma(lemma);

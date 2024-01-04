@@ -12,6 +12,7 @@ import searchengine.services.IndexingService;
 import searchengine.services.IndexingServiceImpl;
 import searchengine.services.StatisticsService;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Map;
 
 @RestController
@@ -22,7 +23,6 @@ public class ApiController {
     private final IndexingService indexingService;
 
     private static final Logger logger = LoggerFactory.getLogger(ApiController.class);
-    private static final Logger errorLogger = LoggerFactory.getLogger("errorLogger");
 
     public ApiController(StatisticsService statisticsService, IndexingService indexingService) {
         this.statisticsService = statisticsService;
@@ -45,10 +45,7 @@ public class ApiController {
             response.setResult(true);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            errorLogger.error("Error during indexing", e);
-            response.setResult(false);
-            response.setError("Произошла ошибка при запуске индексации");
-            return ResponseEntity.status(500).body(response);
+            return handleIndexingError(e);
         }
     }
 
@@ -63,5 +60,12 @@ public class ApiController {
             return ResponseEntity.ok(Map.of("result", false, "error", "Ошибка остановки индексации"));
         }
     }
-}
 
+    private static ResponseEntity<IndexingResponse> handleIndexingError(Exception e) {
+        IndexingResponse response = new IndexingResponse();
+        logger.error("Error during indexing", e);
+        response.setResult(false);
+        response.setError("Произошла ошибка при запуске индексации");
+        return ResponseEntity.status(500).body(response);
+    }
+}

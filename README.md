@@ -43,7 +43,7 @@ Content-Type: application/json
 "url": "https://www.example.com"
 }
 
-###Остановка обхода
+##Остановка обхода
 
 Чтобы остановить обход, выполните запрос:
 
@@ -78,3 +78,13 @@ relevance — релевантность страницы.
 1. Откройте проект в вашей любимой среде разработки.
 2. Внесите необходимые изменения.
 3. Запустите проект для проверки изменений.
+
+## Развертывание базы данных
+
+1. Создайте базу данных MySQL с именем search_engine:
+   CREATE DATABASE search_engine;
+
+2. Внесите настройки базы данных в файл src/main/resources/application.properties:
+   spring.datasource.url=jdbc:mysql://localhost:3306/search_engine
+   spring.datasource.username= ваш_пользователь
+   spring.datasource.password= ваш_пароль
