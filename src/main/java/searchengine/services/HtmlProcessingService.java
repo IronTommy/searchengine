@@ -50,10 +50,8 @@ public class HtmlProcessingService {
 
 
     private List<String> extractLemmasWithLucene(String htmlContent) throws IOException {
-        // Используем Jsoup для парсинга HTML-контента и извлечения текста
         String plainText = Jsoup.parse(htmlContent).text();
 
-        // Теперь разбиваем текст на слова
         String[] words = plainText.split("\\s+");
 
         return List.of(words).stream()

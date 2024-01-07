@@ -24,14 +24,11 @@ public class LemmatizationExample {
         try {
             LemmatizationExample lemmatizer = new LemmatizationExample();
 
-            // Текст для лемматизации
             String text = "Повторное появление леопарда в Осетии позволяет предположить, " +
                     "что леопард постоянно обитает в некоторых районах Северного Кавказа.";
 
-            // Разделение текста на слова
             String[] words = text.split("\\s+");
 
-            // Для каждого слова выводим исходную форму
             System.out.println("Результаты лемматизации текста:");
             for (String word : words) {
                 List<String> wordBaseForms = lemmatizer.getNormalForms(word);

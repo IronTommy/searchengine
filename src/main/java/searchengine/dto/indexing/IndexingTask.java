@@ -19,9 +19,6 @@ public class IndexingTask extends RecursiveTask<List<String>> {
         try {
             Document document = Jsoup.connect(url).get();
             Elements links = document.select("a[href]");
-
-
-            // Возвращаем список URL страниц
             return links.eachAttr("abs:href");
         } catch (Exception e) {
             throw new RuntimeException("Error while processing IndexingTask", e);
