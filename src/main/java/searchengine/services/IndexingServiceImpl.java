@@ -247,7 +247,6 @@ public class IndexingServiceImpl implements IndexingService {
 
             int responseCode = connection.getResponseCode();
 
-            // Проверяем, является ли код ответа успешным (2xx) или в диапазоне ошибок (4xx и 5xx)
             return (responseCode >= 200 && responseCode < 300);
         } catch (IOException e) {
             logger.error("Error checking HTTP response for URL: {}", url, e);  // Используем параметризованный метод логирования
@@ -260,13 +259,11 @@ public class IndexingServiceImpl implements IndexingService {
             Optional<Lemma> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaText);
 
             if (optionalLemma.isPresent()) {
-                // Если лемма уже существует в базе данных, увеличиваем частоту
                 Lemma existingLemma = optionalLemma.get();
                 existingLemma.setFrequency(existingLemma.getFrequency() + 1);
                 lemmaRepository.save(existingLemma);
                 logger.info("Existing lemma saved: {}", existingLemma);
             } else {
-                // Если леммы нет в базе данных, создаем новую запись
                 Lemma newLemma = new Lemma();
                 newLemma.setSite(site);
                 newLemma.setLemma(lemmaText);
@@ -293,7 +290,6 @@ public class IndexingServiceImpl implements IndexingService {
 
             boolean isSiteAllowed = isSiteAllowed(pageUrl.toString());
             if (!isSiteAllowed) {
-                // Сайт запрещен, обновим его статус в базе данных
                 site = saveSiteAndUpdateStatus(site, pageUrl, SiteStatus.FAILED);
                 return false;
             }
@@ -301,15 +297,12 @@ public class IndexingServiceImpl implements IndexingService {
             site = saveSiteAndUpdateStatus(site, pageUrl, SiteStatus.INDEXING);
             boolean indexingResult = myIndexingLogic(pageUrl);
 
-            // Обновим статус и время в зависимости от результата индексации
             saveSiteAndUpdateStatus(site, pageUrl, indexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
 
             Site finalSite = site;
-            // Асинхронно обрабатываем индексацию, чтобы не блокировать основной поток
             CompletableFuture.runAsync(() -> {
                 try {
                     boolean asyncIndexingResult = yourAsyncIndexingLogic(pageUrl);
-                    // Обновим статус и время в зависимости от результата асинхронной индексации
                     saveSiteAndUpdateStatus(finalSite, pageUrl, asyncIndexingResult ? SiteStatus.INDEXED : SiteStatus.FAILED);
                 } catch (Exception e) {
                     logger.error("Error indexing page asynchronously: " + pageUrl, e);
@@ -328,7 +321,6 @@ public class IndexingServiceImpl implements IndexingService {
 
     private Site saveSiteAndUpdateStatus(Site site, URL pageUrl, SiteStatus status) {
         if (site == null) {
-            // Если сайта нет в базе данных, создадим новый
             site = new Site();
             site.setUrl(pageUrl.toString());
         }
@@ -346,7 +338,6 @@ public class IndexingServiceImpl implements IndexingService {
                         .getProperty("indexing-settings.sites", List.class))
                 .orElse(Collections.emptyList());
 
-        // Приводим URL к нижнему регистру для сравнения без учета регистра
         url = url.toLowerCase();
 
         for (String allowedSite : allowedSites) {
@@ -368,9 +359,6 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private boolean checkDetailedConditions(String url, String allowedSite) {
-        // Дополнительная логика проверки символов и условий
-        // Условия сравнения символов или другие детали проверки
-
         boolean containsAllowedString = url.contains("allowed");
 
         return containsAllowedString;
@@ -401,19 +389,14 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     @Transactional
     public List<SearchResult> search(String query, String site, int offset, int limit) {
-        // Разбиваем поисковый запрос на леммы
         List<String> queryLemmas = TextAnalyzer.extractLemmas(query);
 
-        // Исключаем леммы, которые встречаются на слишком большом количестве страниц
         List<String> filteredLemmas = filterFrequentLemmas(queryLemmas);
 
-        // Сортируем леммы в порядке увеличения частоты встречаемости
         filteredLemmas.sort(Comparator.comparingInt(this::getLemmaFrequency));
 
-        // Ищем страницы, соответствующие запросу
         List<Page> matchingPages = findMatchingPages(filteredLemmas, site, offset, limit);
 
-        // Рассчитываем релевантность и сортируем страницы по убыванию релевантности
         List<SearchResult> searchResults = calculateRelevanceAndSort(matchingPages, query);
 
         return searchResults;
@@ -437,17 +420,14 @@ public class IndexingServiceImpl implements IndexingService {
     public <T> List<Page> findMatchingPages(List<T> lemmas, String site, int offset, int limit) {
         List<Index> indices;
 
-        // Преобразование списка лемм в список сущностей Lemma
         List<Lemma> lemmaEntities = lemmas.stream()
                 .map(lemma -> lemmaRepository.findByLemma((String) lemma).orElse(null))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         if (StringUtils.isEmpty(site)) {
-            // Если сайт не указан, ищем по всем сайтам
             indices = indexRepository.findByLemmaIn(lemmaEntities);
         } else {
-            // Если указан конкретный сайт, ищем по нему
             indices = indexRepository.findByLemmaInAndPageSiteUrl(lemmaEntities, site);
         }
 
@@ -489,7 +469,6 @@ public class IndexingServiceImpl implements IndexingService {
             searchResults.add(searchResult);
         }
 
-        // Сортировка по убыванию релевантности
         searchResults.sort(Comparator.comparing(SearchResult::getRelevance).reversed());
 
         return searchResults;

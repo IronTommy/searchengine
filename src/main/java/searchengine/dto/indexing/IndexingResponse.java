@@ -4,16 +4,13 @@ public class IndexingResponse {
     private boolean result;
     private String error;
 
-    // Конструктор без аргументов
     public IndexingResponse() {
     }
 
-    // Конструктор с рез
     public IndexingResponse(boolean result) {
         this.result = result;
     }
 
-    // Конструктор с аргументами
     public IndexingResponse(boolean result, String error) {
         this.result = result;
         this.error = error;
