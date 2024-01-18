@@ -4,6 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import searchengine.model.Site;
 
+import java.util.Collections;
+import java.util.List;
+
 public class SiteCrawlingTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(SiteCrawlingTask.class);
@@ -18,12 +21,13 @@ public class SiteCrawlingTask implements Runnable {
 
     @Override
     public void run() {
-        try {
+        /*try {
             logger.info("Calling startIndexing from SiteCrawlingTask for site: {}", site.getUrl());
-            indexingService.startIndexing();
+            List<Site> singleSiteList = Collections.singletonList(site);
+            indexingService.startIndexing(singleSiteList);
         } catch (Exception e) {
             // Логирование ошибки
             logger.error("Error during site crawling task for site: {}", site.getUrl(), e);
-        }
+        }*/
     }
 }

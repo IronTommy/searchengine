@@ -1,14 +1,14 @@
 # Настройки индексации
 indexing-settings:
   sites:
-    - name: "lenta.ru"
-      url: "https://www.lenta.ru"
-    - name: "Skillbox"
-      url: "https://www.skillbox.ru"
-    - name: "PlayBack.Ru"
-      url: "https://www.playback.ru/"
-    - name: "VolochekLife"
-      url: "https://volochek.life/"
+    - name: lenta.ru
+      url: https://www.lenta.ru
+    - name: skillbox
+      url: https://www.skillbox.ru
+    - name: PlayBack.Ru
+      url: https://www.playback.ru/
+    - name: VolochekLife
+      url: https://volochek.life/
 
 server:
   port: 8080
@@ -31,7 +31,7 @@ spring:
 
 # Настройки для Scraper
 scraper:
-  user-agent: "HeliontSearchBot"
+  user-agent: "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
   referrer: "http://www.google.com"
 
 # Настройки логирования
@@ -43,7 +43,7 @@ logging:
     org.springframework.web.client: DEBUG
     root: INFO
     org.springframework: INFO
-    org.hibernate.SQL: debug
+    org.hibernate.SQL: DEBUG
     searchengine: DEBUG
     searchengine.services.IndexingServiceImpl: DEBUG
   file: logs/spring.log

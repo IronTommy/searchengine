@@ -7,7 +7,7 @@ public class Lemma {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long  id;
 
     @ManyToOne
     @JoinColumn(name = "site_id")

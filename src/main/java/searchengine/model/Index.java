@@ -7,7 +7,7 @@ import javax.persistence.*;
 public class Index {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long  id;
 
     @ManyToOne
     @JoinColumn(name = "page_id", referencedColumnName = "id", nullable = false)

@@ -7,6 +7,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import searchengine.services.IndexingServiceImpl;
 
 import java.io.IOException;
 import java.net.URL;
@@ -14,10 +15,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.RecursiveTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
 
     private static final Logger logger = LoggerFactory.getLogger(IndexingRecursiveTask.class);
+
+    private final AtomicBoolean stopIndexingFlag = new AtomicBoolean(false);
 
     private final URL siteUrl;
     private final Set<URL> visitedUrls;
@@ -27,15 +31,16 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
         this.visitedUrls = visitedUrls;
     }
 
-    private void addLinksToGlobalList(Set<String> links) {
-        // Предположим, есть статический общий список в приложении
-        // GlobalLinkStorage.addLinks(links);
+    private void addLinksToVisitedUrls(Set<String> links) {
         System.out.println("Adding links to the global list: " + links);
     }
 
     @Override
     protected IndexingTaskResult compute() {
         try {
+            if (stopIndexingFlag.get()) {
+                throw new IndexingServiceImpl.IndexingStoppedException("Indexing stopped by the user");
+            }
             // Выполняем запрос к странице
             Connection.Response response = Jsoup.connect(siteUrl.toString()).execute();
 
@@ -65,7 +70,7 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
                 linksSet.removeAll(visitedUrls);
 
                 // Добавляем найденные ссылки в общий список
-                addLinksToGlobalList(linksSet);
+                addLinksToVisitedUrls(linksSet);
 
                 // Ваши дополнительные действия по обработке ссылок
 
@@ -74,9 +79,11 @@ public class IndexingRecursiveTask extends RecursiveTask<IndexingTaskResult> {
 
             } else {
                 // Обработка случая, когда запрос не был успешным
-                System.out.println("Failed to fetch page. Status code: " + statusCode);
+                logger.error("Failed to fetch page. Status code: {}", statusCode);
                 return new IndexingTaskResult();
             }
+        } catch (IndexingServiceImpl.IndexingStoppedException e) {
+            throw e;
         } catch (HttpStatusException e) {
             // Обработка ошибок, связанных с HTTP-статусами
             int statusCode = e.getStatusCode();

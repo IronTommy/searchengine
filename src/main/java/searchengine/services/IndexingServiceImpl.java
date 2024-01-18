@@ -3,9 +3,11 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingRecursiveTask;
 import searchengine.dto.indexing.IndexingTaskResult;
 import searchengine.model.*;
@@ -24,11 +26,10 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import org.springframework.util.StringUtils;
-
-
 
 import static searchengine.model.SiteStatus.INDEXING;
 
@@ -36,8 +37,10 @@ import static searchengine.model.SiteStatus.INDEXING;
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
 
+
     private static final Logger logger = LoggerFactory.getLogger(IndexingServiceImpl.class);
-    private static final int MAX_FREQUENCY = 100; //
+
+    private final AtomicBoolean stopIndexingFlag = new AtomicBoolean(false);
 
     private final Environment environment;
     private final SiteRepository siteRepository;
@@ -47,12 +50,14 @@ public class IndexingServiceImpl implements IndexingService {
 
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
     private final Set<URL> visitedUrls = new HashSet<>();
-    private volatile boolean stopIndexing = false;
+
+    @Autowired
+    private SitesList sitesList;
 
     @Override
     @Transactional
     public void stopIndexing() {
-        stopIndexing = true;
+        stopIndexingFlag.set(true);
     }
 
     @Override
@@ -61,52 +66,52 @@ public class IndexingServiceImpl implements IndexingService {
         logger.info("startIndexing method is called");
 
         try {
-            List<Map<String, String>> siteConfigs = loadSiteConfigs();
+            List<Site> sites = saveSites(sitesList.getSites());
 
-            List<Site> sites = saveSites(siteConfigs);
-
-            ForkJoinPool forkJoinPool = new ForkJoinPool();
             List<CompletableFuture<IndexingTaskResult>> futures = indexSitesAsync(sites, forkJoinPool);
 
             CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-            allOf.join();
 
-            processIndexingResults(sites, futures);
+            while (!stopIndexingFlag.get() && !allOf.isDone()) {
+                Thread.sleep(1000);
+            }
 
-            logger.debug("Indexing process completed successfully");
-        } catch (IndexingStoppedException e) {
-            logger.info("Indexing stopped by the user");
+            if (!stopIndexingFlag.get()) {
+                processIndexingResults(sites, futures);
+                logger.debug("Indexing process completed successfully");
+            } else {
+                logger.info("Indexing process was stopped by the user");
+            }
+
+        } catch (IndexingServiceImpl.IndexingStoppedException e) {
+            logger.info("Indexing process was stopped by the user");
         } catch (Exception e) {
             logger.error("Unexpected error during indexing process", e);
         }
     }
 
-    @Override
-    public List<Map<String, String>> loadSiteConfigs() {
-        return Optional
-                .ofNullable(environment.getProperty("indexing-settings.sites", List.class))
-                .map(obj -> (List<Map<String, String>>) obj)
-                .orElse(Collections.emptyList());
+    private List<Site> saveSites(List<Site> sites) {
+        List<Site> savedSites = new ArrayList<>();
+        sitesList.getSites().forEach(siteConfig -> savedSites.add(createAndSaveSite(sites)));
+        logger.info("Total {} sites saved", savedSites.size());
+        return savedSites;
     }
 
-    private List<Site> saveSites(List<Map<String, String>> siteConfigs) {
-        return siteConfigs.stream()
-                .map(siteConfig -> {
-                    Site site = createAndSaveSite(siteConfig);
-                    logger.info("Site saved: {}", site);
-                    return site;
-                })
-                .collect(Collectors.toList());
-    }
-
-    private Site createAndSaveSite(Map<String, String> siteConfig) {
+    private Site createAndSaveSite(List<Site> sites) {
         Site site = new Site();
         site.setStatus(INDEXING);
         site.setStatusTime(LocalDateTime.now());
-        site.setName(siteConfig.get("name"));
-        site.setUrl(siteConfig.get("url"));
+
+        site.setName(String.valueOf(sites.get(0).getName()));
+        site.setUrl(String.valueOf(sites.get(0).getUrl()));
+
         site.initializeName("NAME");
-        siteRepository.save(site);
+        try {
+            siteRepository.saveAndFlush(site);
+            logger.info("Site saved: {}", site);
+        } catch (Exception e) {
+            logger.error("Error saving site", e);
+        }
         return site;
     }
 
@@ -114,8 +119,8 @@ public class IndexingServiceImpl implements IndexingService {
         return sites.stream()
                 .map(site -> CompletableFuture.supplyAsync(() -> {
                     try {
-                        if (stopIndexing) {
-                            throw new IndexingStoppedException("Индексация остановлена пользователем");
+                        if (stopIndexingFlag.get()) {
+                            throw new IndexingStoppedException("Indexing stopped by the user");
                         }
                         return forkJoinPool.invoke(new IndexingRecursiveTask(new URL(site.getUrl()), visitedUrls));
                     } catch (MalformedURLException e) {
@@ -127,25 +132,26 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void processIndexingResults(List<Site> sites, List<CompletableFuture<IndexingTaskResult>> futures) {
-        for (int i = 0; i < futures.size(); i++) {
-            Site site = sites.get(i);
-            CompletableFuture<IndexingTaskResult> future = futures.get(i);
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 
-            try {
+        try {
+            allOf.join();
+            for (int i = 0; i < futures.size(); i++) {
+                Site site = sites.get(i);
+                CompletableFuture<IndexingTaskResult> future = futures.get(i);
+
                 IndexingTaskResult taskResult = future.get();
                 logger.info("Task result for site {}: {}", site.getUrl(), taskResult);
-                if (taskResult != null) {
-                    processIndexingResult(site, taskResult);
-                } else {
-                    logger.error("Error processing indexing result for site: {}. Task result is null.", site.getUrl());
-                }
-            } catch (InterruptedException | ExecutionException e) {
-                Thread.currentThread().interrupt();
-                logger.error("Error while getting task result for site: {}", site.getUrl(), e);
+
+                Optional.ofNullable(taskResult)
+                        .ifPresent(result -> processIndexingResult(site, result));
+
             }
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Error while processing indexing results", e);
         }
     }
-
 
     @Transactional
     public void processIndexingResult(Site site, IndexingTaskResult result) {
@@ -285,7 +291,7 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             Site site = siteRepository.findByUrlIgnoreCase(pageUrl.toString());
 
-            boolean isSiteAllowed = isSiteAllowed(pageUrl.toString(), false);
+            boolean isSiteAllowed = isSiteAllowed(pageUrl.toString());
             if (!isSiteAllowed) {
                 // Сайт запрещен, обновим его статус в базе данных
                 site = saveSiteAndUpdateStatus(site, pageUrl, SiteStatus.FAILED);
@@ -333,7 +339,7 @@ public class IndexingServiceImpl implements IndexingService {
         return siteRepository.save(site);
     }
 
-    private boolean isSiteAllowed(String url, boolean detailedCheck) {
+    private boolean isSiteAllowed(String url) {
         logger.debug("Available sites from properties: " + environment.getProperty("indexing-settings.sites"));
 
         List<String> allowedSites = Optional.ofNullable(environment
@@ -346,9 +352,7 @@ public class IndexingServiceImpl implements IndexingService {
         for (String allowedSite : allowedSites) {
             String lowerCaseSite = allowedSite.toLowerCase();
 
-            boolean isAllowed = detailedCheck
-                    ? checkDetailedConditions(url, lowerCaseSite)
-                    : url.startsWith(lowerCaseSite);
+            boolean isAllowed = url.startsWith(lowerCaseSite);
 
             logger.debug("Checking site: {}, Result: {}", lowerCaseSite, isAllowed);
 
@@ -425,7 +429,6 @@ public class IndexingServiceImpl implements IndexingService {
                 .collect(Collectors.toList());
     }
 
-
     private int getTotalPageCount() {
         return 1000;
     }
@@ -470,14 +473,6 @@ public class IndexingServiceImpl implements IndexingService {
         return optionalLemma.map(Lemma::getFrequency).orElse(0);
     }
 
-    private String getTitleFromPage(Page page) {
-        return page.getTitle();
-    }
-
-    private String getContentFromPage(Page page) {
-        return page.getContent();
-    }
-
     private List<SearchResult> calculateRelevanceAndSort(List<Page> pages, String query) {
         List<SearchResult> searchResults = new ArrayList<>();
 
@@ -502,12 +497,10 @@ public class IndexingServiceImpl implements IndexingService {
 
 
     private float calculateRelevance(String query, String title, String content) {
-        // Простой пример: релевантность = (количество вхождений запроса в заголовок + содержимое) / длина запроса
         int titleMatches = StringUtils.countOccurrencesOf(title.toLowerCase(), query.toLowerCase());
         int contentMatches = StringUtils.countOccurrencesOf(content.toLowerCase(), query.toLowerCase());
         int queryLength = query.length();
 
-        // Простейшая формула для релевантности
         float relevance = (titleMatches + contentMatches) / (float) queryLength;
 
         return relevance;
@@ -515,7 +508,6 @@ public class IndexingServiceImpl implements IndexingService {
 
     private boolean myIndexingLogic(URL pageUrl) {
         try {
-            // Здесь должна быть логика индексации и получения результата
             IndexingTaskResult result = performIndexingLogic(pageUrl);
 
             if (result != null && !result.getPageUrls().isEmpty()) {
@@ -555,7 +547,6 @@ public class IndexingServiceImpl implements IndexingService {
         return result;
     }
 
-
     @Override
     @Transactional
     public List<URL> crawlPages(String siteUrl) {
@@ -586,10 +577,6 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private void deleteSiteData(Long siteId) {
-        pageRepository.deleteBySiteId(siteId);
-    }
-
     private String getPageContent(URL url) {
         return "";
     }
@@ -599,28 +586,9 @@ public class IndexingServiceImpl implements IndexingService {
         return Arrays.asList(query.split("\\s+"));
     }
 
-    private void sortByFrequency(List<String> lemmas) {
-
-    }
-
-    private void handleIndexingError(Site site, Exception e) {
-        logger.error("Error processing indexing result for site: {}", site.getUrl(), e);
-
-        site.setStatus(SiteStatus.FAILED);
-        site.setStatusTime(LocalDateTime.now());
-        site.setLastError(e.getMessage());
-        site.initializeName("NAME");
-        siteRepository.save(site);
-        logger.debug("Site saved: {}", site);
-    }
-
     public static class IndexingStoppedException extends RuntimeException {
         public IndexingStoppedException(String message) {
             super(message);
-        }
-
-        public IndexingStoppedException(String message, Throwable cause) {
-            super(message, cause);
         }
     }
 

@@ -19,4 +19,6 @@ public class IndexingTaskResult {
     public Set<String> getPageUrls() {
         return pageUrls;
     }
+
+
 }

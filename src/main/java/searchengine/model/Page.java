@@ -1,5 +1,7 @@
 package searchengine.model;
 
+import lombok.Data;
+
 import javax.persistence.*;
 
 @Entity
@@ -7,7 +9,7 @@ public class Page {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long  id;
 
     @ManyToOne
     @JoinColumn(name = "site_id")
@@ -19,13 +21,13 @@ public class Page {
     @Column(name = "title")
     private String title;
 
-    @Column(name = "сontent")
-    private String сontent;
+    @Column(name = "content")
+    private String content;
 
+    @Column(name = "path")
     private String path;
 
     public Page() {
-
     }
 
     public Long getId() {
@@ -40,7 +42,7 @@ public class Page {
     }
 
     public String getContent() {
-        return сontent;
+        return content;
     }
 
     public Page(String url) {
