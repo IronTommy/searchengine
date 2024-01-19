@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,8 +18,11 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.utils.TextAnalyzer;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
@@ -31,16 +35,17 @@ import java.util.stream.Collectors;
 
 import org.springframework.util.StringUtils;
 
-import static searchengine.model.SiteStatus.INDEXING;
-
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
 
 
     private static final Logger logger = LoggerFactory.getLogger(IndexingServiceImpl.class);
 
-    private final AtomicBoolean stopIndexingFlag = new AtomicBoolean(false);
+    private volatile AtomicBoolean stopIndexingFlag = new AtomicBoolean(false);
+
+    private final Object lock = new Object();
 
     private final Environment environment;
     private final SiteRepository siteRepository;
@@ -57,12 +62,14 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     @Transactional
     public void stopIndexing() {
-        stopIndexingFlag.set(true);
+        synchronized (lock) {
+            stopIndexingFlag.set(true);
+        }
     }
 
     @Override
     @Transactional
-    public void startIndexing() {
+    public synchronized void startIndexing() {
         logger.info("startIndexing method is called");
 
         try {
@@ -73,7 +80,10 @@ public class IndexingServiceImpl implements IndexingService {
             CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 
             while (!stopIndexingFlag.get() && !allOf.isDone()) {
-                Thread.sleep(1000);
+                logger.info("Before allOf.join(), stopIndexingFlag: {}", stopIndexingFlag.get());
+                allOf.join();
+                logger.info("After allOf.join(), stopIndexingFlag: {}", stopIndexingFlag.get());
+
             }
 
             if (!stopIndexingFlag.get()) {
@@ -90,20 +100,25 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private List<Site> saveSites(List<Site> sites) {
+    @Transactional
+    List<Site> saveSites(List<Site> sites) {
         List<Site> savedSites = new ArrayList<>();
-        sitesList.getSites().forEach(siteConfig -> savedSites.add(createAndSaveSite(sites)));
+        sites.forEach(siteConfig -> {
+            Site savedSite = createAndSaveSite(siteConfig);
+            savedSites.add(savedSite);
+            logger.info("Saved site: {}", savedSite);
+        });
         logger.info("Total {} sites saved", savedSites.size());
         return savedSites;
     }
 
-    private Site createAndSaveSite(List<Site> sites) {
+    @Transactional
+    Site createAndSaveSite(Site siteConfig) {
         Site site = new Site();
-        site.setStatus(INDEXING);
+        site.setStatus(SiteStatus.INDEXING);
         site.setStatusTime(LocalDateTime.now());
 
-        site.setName(String.valueOf(sites.get(0).getName()));
-        site.setUrl(String.valueOf(sites.get(0).getUrl()));
+        site.setUrl(String.valueOf(siteConfig.getUrl()));
 
         site.initializeName("NAME");
         try {
@@ -111,18 +126,23 @@ public class IndexingServiceImpl implements IndexingService {
             logger.info("Site saved: {}", site);
         } catch (Exception e) {
             logger.error("Error saving site", e);
+            e.printStackTrace();
         }
         return site;
     }
 
-    private List<CompletableFuture<IndexingTaskResult>> indexSitesAsync(List<Site> sites, ForkJoinPool forkJoinPool) {
+    @Transactional
+    List<CompletableFuture<IndexingTaskResult>> indexSitesAsync(List<Site> sites, ForkJoinPool forkJoinPool) {
         return sites.stream()
                 .map(site -> CompletableFuture.supplyAsync(() -> {
                     try {
-                        if (stopIndexingFlag.get()) {
-                            throw new IndexingStoppedException("Indexing stopped by the user");
+                        synchronized (lock) {
+                            if (stopIndexingFlag.get()) {
+                                throw new IndexingStoppedException("Indexing stopped by the user");
+                            }
+                            return forkJoinPool.invoke(new IndexingRecursiveTask(
+                                    new URL(site.getUrl()), visitedUrls, stopIndexingFlag, 0));
                         }
-                        return forkJoinPool.invoke(new IndexingRecursiveTask(new URL(site.getUrl()), visitedUrls));
                     } catch (MalformedURLException e) {
                         logger.error("Malformed URL for site: {}", site.getUrl(), e);
                         return null;
@@ -131,7 +151,8 @@ public class IndexingServiceImpl implements IndexingService {
                 .collect(Collectors.toList());
     }
 
-    private void processIndexingResults(List<Site> sites, List<CompletableFuture<IndexingTaskResult>> futures) {
+    @Transactional
+    void processIndexingResults(List<Site> sites, List<CompletableFuture<IndexingTaskResult>> futures) {
         CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 
         try {
@@ -164,6 +185,26 @@ public class IndexingServiceImpl implements IndexingService {
         updateSiteStatus(site);
 
         logger.info("Processing indexing result completed for site: {}", site.getUrl());
+    }
+
+    private boolean isValidHttpResponse(URL url) {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            RequestConfig requestConfig = RequestConfig.custom()
+                    .setConnectTimeout(5000)
+                    .setSocketTimeout(5000)
+                    .build();
+
+            HttpGet httpGet = new HttpGet(url.toString());
+            httpGet.setConfig(requestConfig);
+
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                int statusCode = response.getStatusLine().getStatusCode();
+                return statusCode >= 200 && statusCode < 300;
+            }
+        } catch (Exception e) {
+            logger.error("Error while checking HTTP response for URL: {}", url, e);
+            return false;
+        }
     }
 
     private void processPage(Site site, String pageUrl) {
@@ -214,13 +255,6 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private void saveLemmasToDatabase(Site site, List<String> lemmas) {
-        for (String lemmaText : lemmas) {
-            saveLemmaToDatabase(site, lemmaText);
-            logger.debug("Lemma saved for site: {}, text: {}", site.getUrl(), lemmaText);
-        }
-    }
-
     private Page savePageToDatabase(Site site, String path) {
         Page page = new Page();
         page.setSite(site);
@@ -236,22 +270,6 @@ public class IndexingServiceImpl implements IndexingService {
         site.initializeName("NAME");
         siteRepository.save(site);
         logger.debug("Site saved: {}", site);
-    }
-
-
-    private boolean isValidHttpResponse(URL url) {
-        try {
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-
-            int responseCode = connection.getResponseCode();
-
-            return (responseCode >= 200 && responseCode < 300);
-        } catch (IOException e) {
-            logger.error("Error checking HTTP response for URL: {}", url, e);  // Используем параметризованный метод логирования
-            return false;
-        }
     }
 
     private void saveLemmaToDatabase(Site site, String lemmaText) {
@@ -531,9 +549,8 @@ public class IndexingServiceImpl implements IndexingService {
     public List<URL> crawlPages(String siteUrl) {
         try {
             URL initialUrl = new URL(siteUrl);
-            List<URL> initialPages = List.of(initialUrl);
 
-            IndexingRecursiveTask indexingTask = new IndexingRecursiveTask(initialUrl, visitedUrls);
+            IndexingRecursiveTask indexingTask = new IndexingRecursiveTask(initialUrl, visitedUrls, stopIndexingFlag, 0);
             IndexingTaskResult result = forkJoinPool.invoke(indexingTask);
 
             visitedUrls.addAll(result.getPageUrls().stream().map(this::toURL).collect(Collectors.toSet()));
@@ -561,8 +578,7 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private List<String> extractLemmas(String query) {
-
-        return Arrays.asList(query.split("\\s+"));
+        return TextAnalyzer.extractLemmas(query);
     }
 
     public static class IndexingStoppedException extends RuntimeException {

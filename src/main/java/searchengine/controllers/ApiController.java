@@ -16,15 +16,11 @@ import searchengine.services.IndexingServiceImpl;
 import searchengine.services.StatisticsService;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
 public class ApiController {
-
-    @Autowired
-    private SitesList sitesList;
 
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;

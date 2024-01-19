@@ -37,6 +37,7 @@ scraper:
 # Настройки логирования
 logging:
   level:
+    org.springframework.transaction: DEBUG
     org.springframework.web: DEBUG
     org.springframework.web.client.RestTemplate: DEBUG
     org.springframework.web.reactive: DEBUG
